@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISTEM PENGURUSAN TAKWIM KEMAS DAERAH PETALING</title>
+    
+    <!-- React & Tailwind -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script type="module">
+        import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi Firebase Anda
+        const firebaseConfig = {
+            apiKey: "AIzaSyBstv38mQJzjrAnFGzWrzrmTT4Aiztvqi4",
+            authDomain: "takwim-kemas.firebaseapp.com",
+            projectId: "takwim-kemas",
+            storageBucket: "takwim-kemas.firebasestorage.app",
+            messagingSenderId: "969076118568",
+            appId: "1:969076118568:web:66adc0da88a83adbfb911d",
+            measurementId: "G-YQT64FZZBZ"
+        };
+
+        try {
+            const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            window.firebaseApp = {
+                auth, db, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, signInAnonymously
+            };
+        } catch (error) {
+            console.error("Ralat Permulaan Firebase:", error);
+            window.firebaseInitError = error.message;
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Dancing+Script:wght@700&display=swap');
+        
+        body { 
+            background: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 33%, #f3e8ff 66%, #ecfccb 100%);
+            background-attachment: fixed;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            color: #1e3a8a;
+            min-height: 100vh;
+        }
+
+        .signature-font { font-family: 'Dancing Script', cursive; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+        .card-pastel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .btn-pastel-blue { background-color: #bae6fd; color: #0369a1; }
+        .btn-pastel-blue:hover { background-color: #7dd3fc; }
+        .btn-pastel-pink { background-color: #fbcfe8; color: #be185d; }
+        .btn-pastel-pink:hover { background-color: #f9a8d4; }
+        .btn-pastel-purple { background-color: #e9d5ff; color: #7e22ce; }
+        .btn-pastel-purple:hover { background-color: #d8b4fe; }
+        .btn-pastel-lime { background-color: #d9f99d; color: #4d7c0f; }
+        .btn-pastel-lime:hover { background-color: #bef264; }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 4px;
+        }
+        .calendar-cell {
+            min-height: 100px;
+            background: rgba(255,255,255,0.6);
+            border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 12px;
+            padding: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const PARLIMEN_LIST = [
+            "Parlimen Puchong",
+            "Parlimen Subang",
+            "Parlimen Petaling Jaya",
+            "Parlimen Damansara",
+            "Parlimen Sungai Buloh",
+            "Parlimen Shah Alam"
+        ];
+
+        const ROLES = ["PKD", "PPPAK", "GURU", "ADMIN"];
+
+        const PARLIMEN_COLORS = {
+            "Semua Parlimen": "bg-slate-800 text-white border-slate-900", 
+            "Parlimen Puchong": "bg-pink-200 text-pink-800 border-pink-300",
+            "Parlimen Subang": "bg-blue-200 text-blue-800 border-blue-300",
+            "Parlimen Petaling Jaya": "bg-purple-200 text-purple-800 border-purple-300",
+            "Parlimen Damansara": "bg-lime-200 text-lime-800 border-lime-300",
+            "Parlimen Sungai Buloh": "bg-orange-200 text-orange-800 border-orange-300",
+            "Parlimen Shah Alam": "bg-teal-200 text-teal-800 border-teal-300"
+        };
+
+        function Modal({ isOpen, title, message, onConfirm, onCancel, confirmText = "OK" }) {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
+                    <div className="bg-white p-6 rounded-3xl shadow-xl max-w-sm w-full">
+                        <h3 className="text-xl font-black text-slate-800 mb-2">{title}</h3>
+                        <p className="mb-6 text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">{message}</p>
+                        <div className="flex justify-end gap-3">
+                            {onCancel && (
+                                <button onClick={onCancel} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-colors">
+                                    Batal
+                                </button>
+                            )}
+                            <button onClick={onConfirm} className="px-5 py-2.5 btn-pastel-blue font-bold rounded-2xl transition-colors">
+                                {confirmText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function AuthView({ handleLogin, handleRegister }) {
+            const [authMode, setAuthMode] = useState('login'); 
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [name, setName] = useState('');
+            const [role, setRole] = useState('GURU');
+            const [parlimen, setParlimen] = useState(PARLIMEN_LIST[0]);
+            const [msg, setMsg] = useState({ text: '', type: '' });
+            const [isProcessing, setIsProcessing] = useState(false);
+
+            const onLoginSubmit = (e) => {
+                e.preventDefault();
+                const res = handleLogin(email, password);
+                if (!res.success) setMsg({ text: res.message, type: 'error' });
+            };
+
+            const onRegisterSubmit = async (e) => {
+                e.preventDefault();
+                setIsProcessing(true);
+                const newUser = { name, email, password, role };
+                if (role === 'PPPAK' || role === 'GURU') newUser.parlimen = parlimen;
+                
+                const res = await handleRegister(newUser);
+                setIsProcessing(false);
+                
+                if (res.success) {
+                    setMsg({ text: 'Pendaftaran berjaya! Sila log masuk.', type: 'success' });
+                    setAuthMode('login');
+                } else {
+                    setMsg({ text: res.message, type: 'error' });
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+                    <div className="absolute top-10 left-10 w-64 h-64 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-pulse"></div>
+                    <div className="absolute bottom-10 right-10 w-64 h-64 bg-lime-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-pulse" style={{animationDelay: '2s'}}></div>
+                    
+                    <div className="card-pastel p-8 md:p-10 rounded-[2.5rem] w-full max-w-md relative z-10 animate-fade-in">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-gradient-to-br from-blue-300 to-purple-300 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg transform rotate-3">
+                                <span className="text-2xl font-black text-white">TK</span>
+                            </div>
+                            <h1 className="text-xl md:text-2xl font-black text-slate-800 leading-tight">SISTEM PENGURUSAN TAKWIM</h1>
+                            <p className="text-sm font-semibold text-slate-500 mt-1">KEMAS DAERAH PETALING</p>
+                        </div>
+
+                        {msg.text && (
+                            <div className={`mb-6 p-4 rounded-2xl text-sm font-bold ${msg.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-lime-100 text-lime-700'}`}>
+                                {msg.text}
+                            </div>
+                        )}
+
+                        {authMode === 'login' && (
+                            <form onSubmit={onLoginSubmit} className="space-y-5 animate-fade-in">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">E-mel</label>
+                                    <input type="email" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={email} onChange={e=>setEmail(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Kata Laluan</label>
+                                    <input type="password" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={password} onChange={e=>setPassword(e.target.value)} />
+                                </div>
+                                <button type="submit" className="w-full py-3.5 btn-pastel-blue font-black rounded-2xl shadow-sm hover:shadow-md transition-all">Log Masuk</button>
+                                
+                                <div className="text-center text-sm font-medium text-slate-500 mt-6 space-y-2">
+                                    <div>Belum ada akaun? <button type="button" onClick={() => {setAuthMode('register'); setMsg({text:'', type:''});}} className="font-bold text-blue-600 hover:underline">Daftar Sekarang</button></div>
+                                    <div><button type="button" onClick={() => alert("Sila hubungi ADMIN sistem (rizannisah@kemas.gov.my) untuk menetapkan semula kata laluan anda.")} className="text-xs text-slate-400 hover:text-slate-600">Lupa Kata Laluan?</button></div>
+                                </div>
+                            </form>
+                        )}
+
+                        {authMode === 'register' && (
+                            <form onSubmit={onRegisterSubmit} className="space-y-4 animate-fade-in max-h-[60vh] overflow-y-auto px-2 pb-2">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Nama Penuh</label>
+                                    <input type="text" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-pink-100 transition-all" value={name} onChange={e=>setName(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">E-mel</label>
+                                    <input type="email" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-pink-100 transition-all" value={email} onChange={e=>setEmail(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Kata Laluan</label>
+                                    <input type="password" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-pink-100 transition-all" value={password} onChange={e=>setPassword(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Peranan</label>
+                                    <select className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-pink-100 transition-all" value={role} onChange={e=>setRole(e.target.value)}>
+                                        {ROLES.filter(r => r !== 'ADMIN').map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                {(role === 'PPPAK' || role === 'GURU') && (
+                                    <div className="animate-fade-in">
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Parlimen</label>
+                                        <select className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-pink-100 transition-all" value={parlimen} onChange={e=>setParlimen(e.target.value)}>
+                                            {PARLIMEN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                                <button type="submit" disabled={isProcessing} className="w-full py-3.5 btn-pastel-pink font-black rounded-2xl mt-4 shadow-sm hover:shadow-md transition-all">
+                                    {isProcessing ? 'Memproses...' : 'Daftar Akaun'}
+                                </button>
+                                <div className="text-center text-sm font-medium text-slate-500 mt-4">
+                                    Sudah ada akaun? <button type="button" onClick={() => {setAuthMode('login'); setMsg({text:'', type:''});}} className="font-bold text-pink-600 hover:underline">Log Masuk</button>
+                                </div>
+                            </form>
+                        )}
+                        
+                        <div className="absolute bottom-4 right-6 z-50 pointer-events-none opacity-50 flex flex-col items-end">
+                            <span className="text-[9px] text-slate-600 font-bold mb-[-4px]">By :</span>
+                            <span className="signature-font text-lg text-slate-800">NsHOnsoi</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function AdminUserManagement({ currentUser, users, onResetPassword, onChangeRole, onAddUser, showAlert }) {
+            const [selectedUser, setSelectedUser] = useState(null);
+            const [newPassword, setNewPassword] = useState('');
+            const [modalOpen, setModalOpen] = useState(false);
+
+            // State for adding new user
+            const [newName, setNewName] = useState('');
+            const [newEmail, setNewEmail] = useState('');
+            const [newUserPassword, setNewUserPassword] = useState('');
+            const [newRole, setNewRole] = useState('PPPAK');
+            const [newParlimen, setNewParlimen] = useState(PARLIMEN_LIST[0]);
+
+            const handleAddNewUser = async (e) => {
+                e.preventDefault();
+                if(!newName || !newEmail || !newUserPassword) return;
+                
+                const newUser = { name: newName, email: newEmail, password: newUserPassword, role: newRole };
+                if (newRole === 'PPPAK' || newRole === 'GURU') newUser.parlimen = newParlimen;
+
+                const res = await onAddUser(newUser);
+                if(res.success) {
+                    showAlert("Berjaya", `Pengguna baru (${newName}) berjaya didaftarkan.`);
+                    setNewName(''); setNewEmail(''); setNewUserPassword('');
+                } else {
+                    showAlert("Ralat", res.message);
+                }
+            };
+
+            const openResetModal = (user) => {
+                setSelectedUser(user);
+                setNewPassword('');
+                setModalOpen(true);
+            };
+
+            const confirmReset = () => {
+                if(!newPassword) return;
+                onResetPassword(selectedUser.id, newPassword);
+                setModalOpen(false);
+            };
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <h2 className="text-2xl font-black text-slate-800">Pengurusan Akses (Admin)</h2>
+                    
+                    {/* Borang Tambah Pengguna Oleh Admin */}
+                    <div className="card-pastel p-6 rounded-3xl">
+                        <h3 className="font-bold text-slate-800 mb-4">Tambah Pengguna Baru (Kakitangan)</h3>
+                        <form onSubmit={handleAddNewUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+                            <div className="lg:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Nama Penuh</label>
+                                <input type="text" required className="w-full bg-white/50 border border-slate-200 px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm" value={newName} onChange={e=>setNewName(e.target.value)} />
+                            </div>
+                            <div className="lg:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1">E-mel</label>
+                                <input type="email" required className="w-full bg-white/50 border border-slate-200 px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm" value={newEmail} onChange={e=>setNewEmail(e.target.value)} />
+                            </div>
+                            <div className="lg:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Kata Laluan</label>
+                                <input type="text" required className="w-full bg-white/50 border border-slate-200 px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm" value={newUserPassword} onChange={e=>setNewUserPassword(e.target.value)} />
+                            </div>
+                            <div className="lg:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Peranan</label>
+                                <select className="w-full bg-white/50 border border-slate-200 px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm font-bold" value={newRole} onChange={e=>setNewRole(e.target.value)}>
+                                    <option value="PPPAK">PPPAK</option>
+                                    <option value="GURU">GURU</option>
+                                    <option value="PKD">PKD</option>
+                                    <option value="ADMIN">ADMIN</option>
+                                </select>
+                            </div>
+                            <div className="lg:col-span-1">
+                                {(newRole === 'PPPAK' || newRole === 'GURU') && (
+                                    <>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Parlimen</label>
+                                        <select className="w-full bg-white/50 border border-slate-200 px-3 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm" value={newParlimen} onChange={e=>setNewParlimen(e.target.value)}>
+                                            {PARLIMEN_LIST.map(p => <option key={p} value={p}>{p.replace('Parlimen ', '')}</option>)}
+                                        </select>
+                                    </>
+                                )}
+                            </div>
+                            <div className="lg:col-span-6 mt-2">
+                                <button type="submit" className="w-full py-3 btn-pastel-blue font-bold rounded-xl shadow-sm">Daftar Pengguna</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div className="card-pastel rounded-3xl p-6 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead>
+                                <tr className="border-b-2 border-slate-100 text-slate-500">
+                                    <th className="p-4 font-bold">Pengguna</th>
+                                    <th className="p-4 font-bold">Peranan</th>
+                                    <th className="p-4 font-bold">Kawasan</th>
+                                    <th className="p-4 font-bold text-center">Tindakan &amp; Peranan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {users.filter(u => u.id !== currentUser.id).map(user => (
+                                    <tr key={user.id} className="border-b border-slate-50 hover:bg-white/50 transition-colors">
+                                        <td className="p-4">
+                                            <div className="font-bold text-slate-700">{user.name}</div>
+                                            <div className="text-xs text-slate-500">{user.email}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                                                {user.role}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-slate-600 font-medium">{user.parlimen || '-'}</td>
+                                        <td className="p-4 text-center space-y-2">
+                                            <select 
+                                                value={user.role} 
+                                                onChange={(e) => onChangeRole(user.id, e.target.value)}
+                                                className="w-full mb-2 bg-white/50 border border-slate-200 px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-purple-200 text-xs font-bold text-slate-700"
+                                            >
+                                                <option value="GURU">Peranan: GURU</option>
+                                                <option value="PPPAK">Peranan: PPPAK</option>
+                                                <option value="PKD">Peranan: PKD</option>
+                                                <option value="ADMIN">Peranan: ADMIN</option>
+                                            </select>
+                                            <button onClick={() => openResetModal(user)} className="w-full px-4 py-2 btn-pastel-pink text-xs font-bold rounded-xl shadow-sm">
+                                                Reset Kata Laluan
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {modalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                            <div className="bg-white p-6 rounded-3xl shadow-xl max-w-sm w-full">
+                                <h3 className="text-lg font-black text-slate-800 mb-2">Reset Kata Laluan</h3>
+                                <p className="mb-4 text-sm text-slate-600 font-medium">Masukkan kata laluan baru untuk <b>{selectedUser?.name}</b>.</p>
+                                <input type="text" className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl mb-6 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Kata Laluan Baru" value={newPassword} onChange={e=>setNewPassword(e.target.value)} />
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setModalOpen(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">Batal</button>
+                                    <button onClick={confirmReset} className="px-4 py-2 btn-pastel-pink font-bold rounded-xl transition-colors">Sahkan Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function ProfilGuru({ user, premisList, onUpdateProfile, showAlert }) {
+            const availablePremis = premisList.filter(p => p.parlimen === user.parlimen);
+            const [selectedPremis, setSelectedPremis] = useState(user.premisId || '');
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                if(!selectedPremis) {
+                    showAlert("Ralat", "Sila pilih premis tempat bertugas.");
+                    return;
+                }
+                onUpdateProfile(user.id, { premisId: selectedPremis });
+                showAlert("Berjaya", "Profil dan Premis berjaya dikemas kini.");
+            };
+
+            return (
+                <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
+                    <h2 className="text-2xl font-black text-slate-800">Profil & Tetapan Premis</h2>
+                    <div className="card-pastel p-8 rounded-3xl">
+                        <form onSubmit={handleSave} className="space-y-5">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Nama Guru</label>
+                                <input type="text" disabled value={user.name} className="w-full bg-slate-100 border border-slate-200 px-4 py-3 rounded-2xl text-slate-500 cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Parlimen</label>
+                                <input type="text" disabled value={user.parlimen} className="w-full bg-slate-100 border border-slate-200 px-4 py-3 rounded-2xl text-slate-500 cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Premis (TASKA/TABIKA)</label>
+                                <select 
+                                    className="w-full bg-white/50 border border-slate-300 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 transition-all font-medium"
+                                    value={selectedPremis}
+                                    onChange={(e) => setSelectedPremis(e.target.value)}
+                                >
+                                    <option value="">-- Sila Pilih Premis --</option>
+                                    {availablePremis.map(p => (
+                                        <option key={p.id} value={p.id}>{p.nama}</option>
+                                    ))}
+                                </select>
+                                {availablePremis.length === 0 && (
+                                    <p className="text-xs text-red-500 mt-2 font-bold">Tiada premis didaftarkan untuk parlimen ini. Sila hubungi PPPAK.</p>
+                                )}
+                            </div>
+                            <button type="submit" className="w-full py-4 btn-pastel-blue font-black rounded-2xl shadow-sm mt-4">Simpan Profil</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function PengurusanPremis({ user, premisList, onAddPremis, showAlert }) {
+            const [namaPremis, setNamaPremis] = useState('');
+            const isAdmin = user.role === 'ADMIN';
+            const [selectedParlimen, setSelectedParlimen] = useState(isAdmin ? PARLIMEN_LIST[0] : user.parlimen);
+
+            const displayPremis = isAdmin 
+                ? premisList.sort((a,b) => a.parlimen.localeCompare(b.parlimen)) 
+                : premisList.filter(p => p.parlimen === user.parlimen);
+
+            const handleAdd = (e) => {
+                e.preventDefault();
+                if(!namaPremis.trim()) return;
+                
+                const targetParlimen = isAdmin ? selectedParlimen : user.parlimen;
+                onAddPremis({
+                    nama: namaPremis,
+                    parlimen: targetParlimen
+                });
+                setNamaPremis('');
+                showAlert("Berjaya", "Premis baru berjaya ditambah di bawah " + targetParlimen);
+            };
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <h2 className="text-2xl font-black text-slate-800">Pengurusan Premis (TASKA/TABIKA)</h2>
+                    <p className="text-slate-500 font-bold">{isAdmin ? 'Semua Kawasan (Akses ADMIN)' : `Kawasan: ${user.parlimen}`}</p>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-1">
+                            <div className="card-pastel p-6 rounded-3xl">
+                                <h3 className="font-bold text-slate-800 mb-4">Tambah Premis Baru</h3>
+                                <form onSubmit={handleAdd} className="space-y-4">
+                                    {isAdmin && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Pilih Parlimen</label>
+                                            <select 
+                                                className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-lime-100 text-sm"
+                                                value={selectedParlimen} onChange={e=>setSelectedParlimen(e.target.value)}
+                                            >
+                                                {PARLIMEN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Nama Premis</label>
+                                        <input 
+                                            type="text" required placeholder="Cth: TASKA KEMAS Mutiara" 
+                                            className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-lime-100 text-sm"
+                                            value={namaPremis} onChange={e=>setNamaPremis(e.target.value)}
+                                        />
+                                    </div>
+                                    <button type="submit" className="w-full py-3 btn-pastel-lime font-black rounded-2xl shadow-sm">Tambah Premis</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-2">
+                            <div className="card-pastel p-6 rounded-3xl overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b-2 border-slate-100 text-slate-500">
+                                            <th className="p-4 font-bold">Nama Premis</th>
+                                            {isAdmin && <th className="p-4 font-bold">Parlimen</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {displayPremis.length === 0 ? (
+                                            <tr><td colSpan={isAdmin ? "2" : "1"} className="p-4 text-center text-slate-400 font-bold">Tiada premis direkodkan.</td></tr>
+                                        ) : displayPremis.map(p => (
+                                            <tr key={p.id} className="border-b border-slate-50 hover:bg-white/50 transition-colors">
+                                                <td className="p-4 font-bold text-slate-700">{p.nama}</td>
+                                                {isAdmin && <td className="p-4 text-xs font-medium text-slate-500">{p.parlimen}</td>}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function PengurusanProgram({ user, programs, onAddProgram, premisList, onUpdateTindakanPKD, onUpdateTindakanPPPAK, onDeleteProgram, showAlert }) {
+            const [mode, setMode] = useState('list');
+            const [peringkatPilihan, setPeringkatPilihan] = useState('Peringkat PARLIMEN');
+            const [deleteConfirm, setDeleteConfirm] = useState(null);
+            
+            const visiblePrograms = useMemo(() => {
+                if (user.role === 'ADMIN') return programs;
+                if (user.role === 'PKD') return programs.filter(p => p.ownerRole !== 'GURU' || p.tindakanPPPAK === 'MEMERLUKAN KEHADIRAN PKD');
+                
+                return programs.map(p => {
+                    if (p.parlimen === user.parlimen || p.parlimen === 'Semua Parlimen') return p;
+                    if (p.tindakanPKD === 'HADIR') return { ...p, nama: 'Komitmen PKD (Sila Elakkan)', tempat: 'Sulit', peringkat: '-', ownerName: '-', isMasked: true };
+                    return null;
+                }).filter(Boolean);
+            }, [programs, user]);
+
+            const getPremisName = (pid) => {
+                const f = premisList.find(x => x.id === pid);
+                return f ? f.nama : 'Peringkat Parlimen/Daerah';
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                
+                let assignedPremisId = null;
+                let assignedPeringkat = null;
+                let assignedParlimen = user.parlimen;
+
+                if (user.role === 'GURU') {
+                    if (!user.premisId) {
+                        showAlert("Ralat", "Anda belum menetapkan premis di halaman Profil.");
+                        return;
+                    }
+                    assignedPremisId = user.premisId;
+                    assignedPeringkat = 'Peringkat TASKA/TABIKA';
+                } else if (user.role === 'PPPAK') {
+                    assignedPeringkat = fd.get('peringkat');
+                    if (assignedPeringkat === 'Peringkat TASKA/TABIKA') assignedPremisId = fd.get('premisId');
+                } else if (user.role === 'PKD' || user.role === 'ADMIN') {
+                    assignedPeringkat = fd.get('peringkatInput');
+                    assignedParlimen = fd.get('parlimen') || 'Semua Parlimen';
+                }
+
+                await onAddProgram({
+                    nama: fd.get('nama'), tarikh: fd.get('tarikh'), masa: fd.get('masa'), tempat: fd.get('tempat'),
+                    parlimen: assignedParlimen, premisId: assignedPremisId, peringkat: assignedPeringkat
+                });
+                
+                e.target.reset();
+                setMode('list');
+            };
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-800">Senarai Program</h2>
+                            {user.role !== 'PKD' && user.role !== 'ADMIN' && (
+                                <p className="text-slate-500 font-bold">Kawasan: {user.parlimen}</p>
+                            )}
+                        </div>
+                        <button onClick={() => setMode(mode === 'list' ? 'add' : 'list')} className="px-5 py-2.5 btn-pastel-blue font-bold rounded-2xl shadow-sm">
+                            {mode === 'list' ? '+ Tambah Program' : 'Kembali ke Senarai'}
+                        </button>
+                    </div>
+
+                    {mode === 'add' && (
+                        <div className="card-pastel p-8 rounded-3xl max-w-2xl mx-auto animate-fade-in">
+                            <h3 className="text-xl font-bold text-slate-800 mb-6">Borang Program Baru</h3>
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1">Nama Program</label>
+                                    <input type="text" name="nama" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Tarikh</label>
+                                        <input type="date" name="tarikh" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Masa</label>
+                                        <input type="time" name="masa" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1">Tempat / Lokasi</label>
+                                    <input type="text" name="tempat" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                </div>
+                                
+                                {(user.role === 'PKD' || user.role === 'ADMIN') && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Parlimen Terlibat</label>
+                                            <select name="parlimen" className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100">
+                                                <option value="Semua Parlimen">Semua Parlimen (Peringkat Daerah)</option>
+                                                {PARLIMEN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Peringkat Pelaksanaan</label>
+                                            <input type="text" name="peringkatInput" placeholder="Cth: Peringkat Daerah" required className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {user.role === 'PPPAK' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Peringkat Pelaksanaan</label>
+                                            <select 
+                                                name="peringkat" 
+                                                className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100"
+                                                value={peringkatPilihan} onChange={(e) => setPeringkatPilihan(e.target.value)}
+                                            >
+                                                <option value="Peringkat TASKA/TABIKA">Peringkat TASKA/TABIKA</option>
+                                                <option value="Peringkat DUN">Peringkat DUN</option>
+                                                <option value="Peringkat PARLIMEN">Peringkat PARLIMEN</option>
+                                            </select>
+                                        </div>
+                                        {peringkatPilihan === 'Peringkat TASKA/TABIKA' && (
+                                            <div className="animate-fade-in">
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Premis Terlibat (Pilihan)</label>
+                                                <select name="premisId" className="w-full bg-white/50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100">
+                                                    <option value="">-- Semua Premis (Am) --</option>
+                                                    {premisList.filter(p => p.parlimen === user.parlimen).map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                <button type="submit" className="w-full py-4 btn-pastel-blue font-black rounded-2xl shadow-sm hover:shadow-md transition-all mt-4">Simpan Program</button>
+                            </form>
+                        </div>
+                    )}
+
+                    {mode === 'list' && (
+                        <div className="card-pastel rounded-3xl p-6 overflow-x-auto animate-fade-in">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="bg-slate-50/50 text-slate-600">
+                                        <th className="p-4 rounded-l-2xl font-bold">Tarikh &amp; Masa</th>
+                                        <th className="p-4 font-bold">Maklumat Program</th>
+                                        <th className="p-4 font-bold">Peringkat Pelaksanaan</th>
+                                        <th className="p-4 font-bold">Tindakan PPPAK</th>
+                                        <th className="p-4 font-bold">Tindakan PKD</th>
+                                        <th className="p-4 rounded-r-2xl font-bold">Penganjur</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {visiblePrograms.length === 0 ? (
+                                        <tr><td colSpan="6" className="text-center p-8 text-slate-400 font-bold">Tiada program direkodkan.</td></tr>
+                                    ) : (
+                                        [...visiblePrograms].sort((a,b)=>new Date(a.tarikh) - new Date(b.tarikh)).map(prog => (
+                                            <tr key={prog.id} className={`border-b border-slate-50 transition-colors ${prog.isMasked ? 'bg-red-50/50' : 'hover:bg-white/50'}`}>
+                                                <td className="p-4 text-slate-700 whitespace-nowrap">
+                                                    <div className="font-bold text-sm">{new Date(prog.tarikh).toLocaleDateString('ms-MY')}</div>
+                                                    <div className="text-xs font-medium text-slate-500">{prog.masa}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className={`font-bold text-base ${prog.isMasked ? 'text-red-600' : 'text-slate-800'}`}>{prog.nama}</div>
+                                                    <div className="text-xs text-slate-500 font-medium truncate max-w-[200px]" title={prog.tempat}>📍 {prog.tempat}</div>
+                                                    {prog.parlimen === 'Semua Parlimen' && user.role !== 'PKD' && user.role !== 'ADMIN' && (
+                                                        <span className="mt-1 inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-white">Program Daerah (View Only)</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-slate-700 text-sm font-bold">{prog.peringkat || 'Tidak Dinyatakan'}</div>
+                                                    {prog.premisId && !prog.isMasked && (
+                                                        <div className="text-slate-500 text-[10px] mt-1 bg-white px-2 py-1 rounded inline-block border border-slate-200">
+                                                            {getPremisName(prog.premisId)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                    {(user.role === 'PPPAK' || user.role === 'ADMIN') && prog.ownerRole === 'GURU' && !prog.isMasked ? (
+                                                        <select 
+                                                            value={prog.tindakanPPPAK || 'MENUNGGU'} 
+                                                            onChange={(e) => onUpdateTindakanPPPAK(prog.id, e.target.value)}
+                                                            className="text-xs font-bold p-2 rounded outline-none border shadow-sm cursor-pointer"
+                                                        >
+                                                            <option value="MENUNGGU">Menunggu</option>
+                                                            <option value="MAKLUM">Maklum</option>
+                                                            <option value="HADIR">Hadir</option>
+                                                            <option value="MEMERLUKAN KEHADIRAN PKD">Perlu PKD</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="text-[10px] uppercase font-bold px-2 py-1 rounded bg-slate-100 text-slate-600">{prog.tindakanPPPAK || 'N/A'}</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                {(user.role === 'PKD' || user.role === 'ADMIN') && prog.tindakanPKD !== 'N/A' && !prog.isMasked ? (
+                                                    <select 
+                                                        value={prog.tindakanPKD || 'MENUNGGU'} 
+                                                        onChange={(e) => onUpdateTindakanPKD(prog.id, e.target.value)}
+                                                        className="text-xs font-bold p-2 rounded outline-none border shadow-sm cursor-pointer mb-2 block"
+                                                    >
+                                                        <option value="MENUNGGU">Menunggu</option>
+                                                        <option value="HADIR">Hadir</option>
+                                                        <option value="TIDAK HADIR">Tidak Hadir</option>
+                                                    </select>
+                                                ) : (
+                                                    <span className="text-[10px] uppercase font-bold px-2 py-1 rounded block mb-2 bg-slate-100 text-slate-600">{prog.tindakanPKD || 'N/A'}</span>
+                                                )}
+                                                {user.role === 'ADMIN' && !prog.isMasked && (
+                                                    <button onClick={() => setDeleteConfirm(prog.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-[10px] font-bold rounded shadow-sm border border-red-200 w-full text-center transition-colors">
+                                                        Padam Program
+                                                    </button>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-slate-500 text-xs font-medium">{prog.ownerName}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    <Modal isOpen={!!deleteConfirm} title="Padam Program" message="Adakah anda pasti untuk memadam program ini?" onConfirm={() => { onDeleteProgram(deleteConfirm); setDeleteConfirm(null); }} onCancel={() => setDeleteConfirm(null)} confirmText="Ya, Padam" />
+                </div>
+            );
+        }
+
+        function KalendarView({ user, programs }) {
+            const [currentDate, setCurrentDate] = useState(new Date());
+
+            const visiblePrograms = useMemo(() => {
+                if (user.role === 'ADMIN') return programs;
+                if (user.role === 'PKD') return programs.filter(p => p.ownerRole !== 'GURU' || p.tindakanPPPAK === 'MEMERLUKAN KEHADIRAN PKD');
+                
+                return programs.map(p => {
+                    if (p.parlimen === user.parlimen || p.parlimen === 'Semua Parlimen') return p;
+                    if (p.tindakanPKD === 'HADIR') return { ...p, nama: 'Komitmen PKD (Sila Elakkan)', isMasked: true };
+                    return null;
+                }).filter(Boolean);
+            }, [programs, user]);
+
+            const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+            const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDayIndex = new Date(year, month, 1).getDay(); 
+            
+            const days = [];
+            for(let i = 0; i < firstDayIndex; i++) days.push(null);
+            for(let i = 1; i <= daysInMonth; i++) days.push(i);
+
+            const monthNames = ["Januari", "Februari", "Mac", "April", "Mei", "Jun", "Julai", "Ogos", "September", "Oktober", "November", "Disember"];
+            const dayNames = ["Ahad", "Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu"];
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-800">Kalendar Takwim</h2>
+                            <p className="text-slate-500 font-bold">{monthNames[month]} {year}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={prevMonth} className="p-2 bg-white rounded-xl shadow-sm hover:bg-slate-50 font-bold text-slate-600">&#8592; Bulan Lepas</button>
+                            <button onClick={nextMonth} className="p-2 bg-white rounded-xl shadow-sm hover:bg-slate-50 font-bold text-slate-600">Bulan Depan &#8594;</button>
+                        </div>
+                    </div>
+
+                    <div className="card-pastel p-4 rounded-2xl flex flex-wrap gap-2 items-center">
+                        <span className="text-xs font-bold text-slate-500 mr-2">Petunjuk:</span>
+                        {(user.role === 'PKD' || user.role === 'ADMIN') ? (
+                            <>
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${PARLIMEN_COLORS['Semua Parlimen']}`}>Program Daerah (PKD)</span>
+                                {PARLIMEN_LIST.map(p => <span key={p} className={`px-2 py-1 rounded-md text-[10px] font-bold border ${PARLIMEN_COLORS[p]}`}>{p.replace('Parlimen ', '')}</span>)}
+                            </>
+                        ) : (
+                            <>
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold border bg-blue-100 text-blue-800 border-blue-200">Program Anda</span>
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${PARLIMEN_COLORS['Semua Parlimen']}`}>Program Daerah (View Only)</span>
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold border bg-red-100 text-red-800 border-red-300 border-dashed">Komitmen PKD</span>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="card-pastel p-6 rounded-3xl overflow-x-auto">
+                        <div className="min-w-[700px]">
+                            <div className="grid grid-cols-7 gap-1 mb-2">
+                                {dayNames.map(d => <div key={d} className="text-center text-xs font-black text-slate-400 uppercase">{d}</div>)}
+                            </div>
+                            <div className="calendar-grid">
+                                {days.map((day, idx) => {
+                                    if(!day) return <div key={`empty-${idx}`} className="calendar-cell bg-transparent border-none"></div>;
+                                    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                                    const dayPrograms = visiblePrograms.filter(p => p.tarikh === dateStr);
+
+                                    return (
+                                        <div key={day} className="calendar-cell hover:bg-white/80 transition-colors flex flex-col">
+                                            <div className="text-right text-sm font-bold text-slate-400 mb-1">{day}</div>
+                                            <div className="flex-1 space-y-1 overflow-y-auto max-h-[80px]">
+                                                {dayPrograms.map(p => (
+                                                    <div key={p.id} className={`text-[10px] p-1 rounded font-bold leading-tight truncate border ${p.isMasked ? 'bg-red-50 text-red-700 border-red-200 border-dashed' : (user.role === 'PKD' || user.role === 'ADMIN') ? (PARLIMEN_COLORS[p.parlimen] || 'bg-slate-100') : (p.parlimen === 'Semua Parlimen' ? PARLIMEN_COLORS['Semua Parlimen'] : 'bg-blue-100 text-blue-800 border-blue-200')}`}>
+                                                        {!p.isMasked && (p.masa.substring(0,5) + ' ')} {p.nama}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const appId = "takwim_kemas_db";
+            
+            const [isLoading, setIsLoading] = useState(true);
+            const [initError, setInitError] = useState('');
+            
+            const [users, setUsers] = useState([]);
+            const [premisList, setPremisList] = useState([]);
+            const [programs, setPrograms] = useState([]);
+            
+            const [currentUserId, setCurrentUserId] = useState(null);
+            const currentUser = users.find(u => u.id === currentUserId);
+            
+            const [currentView, setCurrentView] = useState('calendar'); 
+            const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '' });
+
+            const showAlert = (title, message) => setAlertModal({ isOpen: true, title, message });
+
+            useEffect(() => {
+                let unsubUsers, unsubPremis, unsubPrograms;
+                let retryCount = 0;
+
+                const initFirebase = async () => {
+                    if (window.firebaseInitError) {
+                        setInitError(window.firebaseInitError);
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    if (!window.firebaseApp) {
+                        retryCount++;
+                        if (retryCount > 60) { 
+                            setInitError("Gagal memuat turun fail sistem dari pelayan Firebase. Sila periksa sambungan internet anda.");
+                            setIsLoading(false);
+                            return;
+                        }
+                        setTimeout(initFirebase, 50);
+                        return;
+                    }
+                    
+                    const { auth, db, collection, onSnapshot, signInAnonymously, doc, setDoc } = window.firebaseApp;
+                    
+                    try {
+                        await signInAnonymously(auth);
+                        
+                        const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+                        const premisRef = collection(db, 'artifacts', appId, 'public', 'data', 'premis');
+                        const programsRef = collection(db, 'artifacts', appId, 'public', 'data', 'programs');
+
+                        unsubUsers = onSnapshot(usersRef, async (snapshot) => {
+                            if (snapshot.empty) {
+                                try {
+                                    await setDoc(doc(usersRef, 'admin_utama'), { name: 'Rizannisah (Admin Utama)', email: 'rizannisah@kemas.gov.my', password: 'admin', role: 'ADMIN' });
+                                } catch(e) { console.error("Gagal bina admin default", e); }
+                            }
+                            setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                            setIsLoading(false);
+                        }, (err) => {
+                            console.error("Firebase Sync Error:", err);
+                            setInitError("Akses Ditolak: " + err.message);
+                            setIsLoading(false);
+                        });
+
+                        unsubPremis = onSnapshot(premisRef, (snapshot) => {
+                            setPremisList(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                        });
+
+                        unsubPrograms = onSnapshot(programsRef, (snapshot) => {
+                            setPrograms(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                        });
+
+                    } catch (e) {
+                        console.error("Firebase Auth Error:", e);
+                        setInitError("Ralat Pengesahan Pangkalan Data: " + e.message);
+                        setIsLoading(false);
+                    }
+                };
+                
+                initFirebase();
+                return () => {
+                    if(unsubUsers) unsubUsers();
+                    if(unsubPremis) unsubPremis();
+                    if(unsubPrograms) unsubPrograms();
+                };
+            }, []);
+
+            const handleLogin = (email, password) => {
+                const user = users.find(u => u.email === email && u.password === password);
+                if (user) {
+                    setCurrentUserId(user.id);
+                    if(user.role === 'GURU' && !user.premisId) setCurrentView('profil');
+                    else setCurrentView('calendar');
+                    return { success: true };
+                }
+                return { success: false, message: 'Log masuk gagal. Semak e-mel dan kata laluan.' };
+            };
+
+            const handleRegister = async (newUserData) => {
+                if (users.find(u => u.email === newUserData.email)) return { success: false, message: 'E-mel ini telah didaftarkan.' };
+                try {
+                    const { db, collection, addDoc } = window.firebaseApp;
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), newUserData);
+                    return { success: true };
+                } catch(e) { return { success: false, message: 'Ralat pelayan. Data tidak dapat disimpan.' }; }
+            };
+
+            const handleResetPassword = async (userId, newPass) => {
+                try {
+                    const { db, doc, updateDoc } = window.firebaseApp;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { password: newPass });
+                    showAlert("Berjaya", "Kata laluan pengguna telah dikemas kini oleh Admin.");
+                } catch(e) { showAlert("Ralat", "Gagal menetapkan semula kata laluan."); }
+            };
+
+            const handleChangeRole = async (userId, newRole) => {
+                try {
+                    const { db, doc, updateDoc } = window.firebaseApp;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { role: newRole });
+                    showAlert("Berjaya", "Peranan pengguna telah dikemas kini.");
+                } catch(e) { showAlert("Ralat", "Gagal menukar peranan."); }
+            };
+
+            const handleDeleteProgram = async (progId) => {
+                try {
+                    const { db, doc, deleteDoc } = window.firebaseApp;
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'programs', progId));
+                    showAlert("Berjaya", "Program telah berjaya dipadamkan.");
+                } catch(e) { showAlert("Ralat", "Gagal memadam program."); }
+            };
+
+            const handleAddPremis = async (newPremisData) => {
+                try {
+                    const { db, collection, addDoc } = window.firebaseApp;
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'premis'), newPremisData);
+                } catch(e) { showAlert("Ralat", "Gagal menyimpan premis."); }
+            };
+
+            const handleAddProgram = async (newProgData) => {
+                let tPPPAK = 'N/A';
+                let tPKD = 'N/A';
+                if (currentUser.role === 'GURU') { tPPPAK = 'MENUNGGU'; tPKD = 'N/A'; }
+                else if (currentUser.role === 'PPPAK') { tPPPAK = 'N/A'; tPKD = 'MENUNGGU'; }
+                
+                try {
+                    const { db, collection, addDoc } = window.firebaseApp;
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'programs'), { 
+                        ...newProgData, ownerId: currentUser.id, ownerName: currentUser.name, ownerRole: currentUser.role, tindakanPPPAK: tPPPAK, tindakanPKD: tPKD 
+                    });
+                    showAlert('Berjaya', 'Program baru telah ditambahkan ke dalam Takwim.');
+                } catch(e) { showAlert('Ralat', 'Gagal menambah program.'); }
+            };
+
+            const handleUpdateTindakanPPPAK = async (progId, status) => {
+                const p = programs.find(x => x.id === progId);
+                if (!p) return;
+                let updatedTPKD = p.tindakanPKD;
+                if (status === 'MEMERLUKAN KEHADIRAN PKD') {
+                    if (updatedTPKD === 'N/A') updatedTPKD = 'MENUNGGU';
+                } else {
+                    updatedTPKD = 'N/A'; 
+                }
+                try {
+                    const { db, doc, updateDoc } = window.firebaseApp;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'programs', progId), { tindakanPPPAK: status, tindakanPKD: updatedTPKD });
+                } catch(e) { showAlert('Ralat', 'Gagal kemas kini status.'); }
+            };
+
+            const handleUpdateTindakanPKD = async (progId, status) => {
+                try {
+                    const { db, doc, updateDoc } = window.firebaseApp;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'programs', progId), { tindakanPKD: status });
+                } catch(e) { showAlert('Ralat', 'Gagal kemas kini status.'); }
+            };
+
+            const handleUpdateProfile = async (userId, updates) => {
+                try {
+                    const { db, doc, updateDoc } = window.firebaseApp;
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), updates);
+                } catch(e) { showAlert('Ralat', 'Gagal menyimpan profil.'); }
+            };
+
+            if (initError) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
+                        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full text-center">
+                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full mx-auto flex items-center justify-center mb-4 text-3xl font-black">!</div>
+                            <h2 className="text-xl font-bold text-red-600 mb-2">Ralat Sambungan Firebase</h2>
+                            <p className="text-sm font-medium text-slate-700 mb-6 bg-red-50 p-4 rounded-xl border border-red-100 break-words">{initError}</p>
+                            <div className="text-sm text-left bg-slate-50 p-5 rounded-2xl space-y-3 border border-slate-100">
+                                <p className="font-bold text-slate-700">Tindakan Penyelesaian:</p>
+                                <ul className="list-disc pl-4 space-y-2 text-slate-600">
+                                    <li>Pastikan <b>Anonymous Authentication</b> telah didayakan dalam panel <i>Authentication &gt; Sign-in method</i> di akaun Firebase anda.</li>
+                                    <li>Pastikan <b>Firestore Rules</b> membenarkan akses data. Kodnya: <code className="block mt-1 bg-slate-200 p-2 rounded text-xs">allow read, write: if true;</code></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-blue-50/50 flex-col space-y-4">
+                        <div className="w-12 h-12 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+                        <div className="text-slate-500 font-bold tracking-widest text-sm text-center px-4">
+                            MENYAMBUNG KE PANGKALAN DATA...<br/>
+                            <span className="text-xs font-normal opacity-70">Sila tunggu sebentar.</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (!currentUser) {
+                return <AuthView handleLogin={handleLogin} handleRegister={handleRegister} />;
+            }
+
+            const isGuruNeedsProfile = currentUser.role === 'GURU' && !currentUser.premisId;
+            let pendingActionsCount = 0;
+            if (currentUser.role === 'PKD' || currentUser.role === 'ADMIN') pendingActionsCount = programs.filter(p => p.tindakanPKD === 'MENUNGGU').length;
+            else if (currentUser.role === 'PPPAK') pendingActionsCount = programs.filter(p => p.parlimen === currentUser.parlimen && p.tindakanPPPAK === 'MENUNGGU').length;
+
+            return (
+                <div className="min-h-screen flex flex-col md:flex-row relative overflow-hidden">
+                    <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-[-1] overflow-hidden">
+                        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-[100px] opacity-40"></div>
+                        <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-[100px] opacity-40"></div>
+                    </div>
+
+                    <aside className="w-full md:w-72 bg-white/60 backdrop-blur-xl border-r border-slate-200/50 flex flex-col p-6 z-20">
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="w-12 h-12 bg-gradient-to-br from-blue-300 to-purple-300 rounded-2xl flex items-center justify-center shadow-sm">
+                                <span className="text-xl font-black text-white">TK</span>
+                            </div>
+                            <div>
+                                <h1 className="font-black text-slate-800 text-base leading-tight">{currentUser.name}</h1>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{currentUser.role}</p>
+                            </div>
+                        </div>
+
+                        <nav className="flex-1 space-y-2">
+                            <button onClick={()=>setCurrentView('calendar')} className={`w-full text-left px-5 py-3.5 rounded-2xl font-bold transition-all ${currentView === 'calendar' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-600 hover:bg-white/50'}`}>Kalendar Takwim</button>
+                            <button onClick={()=>setCurrentView('list')} className={`w-full text-left px-5 py-3.5 rounded-2xl font-bold transition-all flex items-center justify-between ${currentView === 'list' ? 'bg-white shadow-sm text-pink-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                                <span>Senarai Program</span>
+                                {pendingActionsCount > 0 && (
+                                    <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{pendingActionsCount} Tindakan</span>
+                                )}
+                            </button>
+                            {(currentUser.role === 'PPPAK' || currentUser.role === 'ADMIN') && <button onClick={()=>setCurrentView('premis')} className={`w-full text-left px-5 py-3.5 rounded-2xl font-bold transition-all ${currentView === 'premis' ? 'bg-white shadow-sm text-lime-700' : 'text-slate-600 hover:bg-white/50'}`}>Urus Premis</button>}
+                            {currentUser.role === 'GURU' && <button onClick={()=>setCurrentView('profil')} className={`w-full text-left px-5 py-3.5 rounded-2xl font-bold transition-all ${currentView === 'profil' ? 'bg-white shadow-sm text-purple-700' : 'text-slate-600 hover:bg-white/50'}`}>Profil &amp; Premis {isGuruNeedsProfile && <span className="w-2 h-2 inline-block bg-red-500 rounded-full ml-2"></span>}</button>}
+                            {currentUser.role === 'ADMIN' && <button onClick={()=>setCurrentView('admin')} className={`w-full text-left px-5 py-3.5 rounded-2xl font-bold transition-all ${currentView === 'admin' ? 'bg-white shadow-sm text-purple-700' : 'text-slate-600 hover:bg-white/50'}`}>Urus Akses</button>}
+                        </nav>
+
+                        <div className="mt-auto pt-6 border-t border-slate-200/50">
+                            <button onClick={() => setCurrentUserId(null)} className="w-full text-left px-5 py-3 rounded-2xl font-bold text-red-500 hover:bg-red-50 transition-colors">Log Keluar</button>
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+                        <div className="max-w-6xl mx-auto pb-16">
+                            {isGuruNeedsProfile && currentView !== 'profil' && (
+                                <div className="mb-6 p-4 bg-orange-100 text-orange-800 rounded-2xl font-bold flex justify-between items-center animate-fade-in">
+                                    Sila kemas kini profil anda untuk memilih Premis tempat bertugas.
+                                    <button onClick={()=>setCurrentView('profil')} className="px-4 py-2 bg-orange-200 hover:bg-orange-300 rounded-xl transition-colors">Pergi ke Profil</button>
+                                </div>
+                            )}
+
+                            {currentView === 'calendar' && <KalendarView user={currentUser} programs={programs} />}
+                            {currentView === 'list' && <PengurusanProgram user={currentUser} programs={programs} onAddProgram={handleAddProgram} premisList={premisList} onUpdateTindakanPKD={handleUpdateTindakanPKD} onUpdateTindakanPPPAK={handleUpdateTindakanPPPAK} onDeleteProgram={handleDeleteProgram} showAlert={showAlert} />}
+                            {currentView === 'premis' && (currentUser.role === 'PPPAK' || currentUser.role === 'ADMIN') && <PengurusanPremis user={currentUser} premisList={premisList} onAddPremis={handleAddPremis} showAlert={showAlert} />}
+                            {currentView === 'profil' && currentUser.role === 'GURU' && <ProfilGuru user={currentUser} premisList={premisList} onUpdateProfile={handleUpdateProfile} showAlert={showAlert} />}
+                            {currentView === 'admin' && currentUser.role === 'ADMIN' && <AdminUserManagement currentUser={currentUser} users={users} onResetPassword={handleResetPassword} onChangeRole={handleChangeRole} onAddUser={handleRegister} showAlert={showAlert} />}
+                        </div>
+                    </main>
+
+                    <div className="fixed bottom-4 right-6 z-50 pointer-events-none opacity-50 flex flex-col items-end">
+                        <span className="text-[9px] text-slate-600 font-bold mb-[-4px]">By :</span>
+                        <span className="signature-font text-lg text-slate-800">NsHOnsoi</span>
+                    </div>
+
+                    <Modal isOpen={alertModal.isOpen} title={alertModal.title} message={alertModal.message} onConfirm={() => setAlertModal({ ...alertModal, isOpen: false })} />
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
